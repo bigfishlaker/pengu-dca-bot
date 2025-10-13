@@ -52,9 +52,9 @@ export function useSessionKeyTransaction() {
       // Encode the function call
       const data = encodeFunctionData({
         abi,
-        functionName: functionName as any,
-        args: args as any,
-      });
+        functionName,
+        args,
+      } as any);
 
       // For now, use regular wallet transaction
       // In production, this would use Abstract's session key validator
