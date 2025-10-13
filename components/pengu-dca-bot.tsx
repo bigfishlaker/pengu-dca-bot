@@ -590,7 +590,7 @@ export function PenguDCABot() {
               {/* Purchase Details */}
               <div className="p-4 rounded-xl bg-gradient-to-br from-pink-50 to-purple-50 border-2 border-purple-300 space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-purple-600">You're Buying:</span>
+                  <span className="text-sm font-bold text-purple-600">You&apos;re Buying:</span>
                   <span className="text-xl font-black text-pink-600">
                     {tokensPerPurchase} PENGU 🐧
                   </span>
