@@ -2,12 +2,12 @@
 
 import { useState } from 'react';
 import { useAccount, useWalletClient } from 'wagmi';
-import { Abi, encodeFunctionData, Hex } from 'viem';
+import { encodeFunctionData, Hex } from 'viem';
 import { sendRawTransactionWithDetailedOutput } from '@/lib/abstract-api';
 import { toast } from 'sonner';
 
-interface WriteContractParams<TAbi extends Abi = Abi> {
-  abi: TAbi;
+interface WriteContractParams {
+  abi: any;
   address: Hex;
   functionName: string;
   args?: readonly unknown[];
@@ -21,15 +21,16 @@ export function useOptimisticWriteContract() {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
 
-  const writeContract = async <TAbi extends Abi>({
-    abi,
-    address: contractAddress,
-    functionName,
-    args = [],
-    value,
-    onSuccess,
-    onError,
-  }: WriteContractParams<TAbi>) => {
+  const writeContract = async (params: WriteContractParams) => {
+    const {
+      abi,
+      address: contractAddress,
+      functionName,
+      args = [],
+      value,
+      onSuccess,
+      onError,
+    } = params;
     if (!walletClient || !address) {
       const error = new Error('Wallet not connected');
       onError?.(error);

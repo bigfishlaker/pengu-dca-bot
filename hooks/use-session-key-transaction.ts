@@ -2,11 +2,11 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useAccount, useWalletClient } from "wagmi";
-import { type Abi, type Hex, encodeFunctionData } from "viem";
+import { type Hex, encodeFunctionData } from "viem";
 import { useSessionKey } from "./use-session-key";
 
-interface SessionKeyTransactionParams<TAbi extends Abi = Abi> {
-  abi: TAbi;
+interface SessionKeyTransactionParams {
+  abi: any;
   address: Hex;
   functionName: string;
   args?: readonly unknown[];
@@ -26,13 +26,9 @@ export function useSessionKeyTransaction() {
   const { data: walletClient } = useWalletClient();
 
   return useMutation({
-    mutationFn: async <TAbi extends Abi>({
-      abi,
-      address,
-      functionName,
-      args = [],
-      value,
-    }: SessionKeyTransactionParams<TAbi>) => {
+    mutationFn: async (params: SessionKeyTransactionParams) => {
+      const { abi, address, functionName, args = [], value } = params;
+
       if (!userAddress) {
         throw new Error("Wallet not connected");
       }
