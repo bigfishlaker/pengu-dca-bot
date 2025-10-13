@@ -52,8 +52,8 @@ export function useSessionKeyTransaction() {
       // Encode the function call
       const data = encodeFunctionData({
         abi,
-        functionName,
-        args,
+        functionName: functionName as any,
+        args: args as any,
       });
 
       // For now, use regular wallet transaction

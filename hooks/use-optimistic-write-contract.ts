@@ -44,8 +44,8 @@ export function useOptimisticWriteContract() {
       // Encode the function call
       const data = encodeFunctionData({
         abi,
-        functionName,
-        args,
+        functionName: functionName as any,
+        args: args as any,
       });
 
       // Prepare the transaction
