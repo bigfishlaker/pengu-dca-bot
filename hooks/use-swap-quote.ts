@@ -50,7 +50,7 @@ export function useSwapQuote() {
       const pricePerToken = ethAmount / tokenAmount;
 
       // Check if we have a reasonable quote (has liquidity)
-      const hasLiquidity = requiredEth > 0n && requiredEth < parseUnits("1", 18); // Less than 1 ETH
+      const hasLiquidity = requiredEth > BigInt(0) && requiredEth < parseUnits("1", 18); // Less than 1 ETH
 
       return {
         amountIn: requiredEth,

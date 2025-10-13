@@ -200,7 +200,7 @@ export function PenguDCABot() {
 
     // Safety check #1: Add slippage protection (5%)
     const slippageMultiplier = 1 + (MAX_SLIPPAGE_PERCENT / 100);
-    const maxEthWithSlippage = currentQuote.amountIn * BigInt(Math.floor(slippageMultiplier * 100)) / 100n;
+    const maxEthWithSlippage = currentQuote.amountIn * BigInt(Math.floor(slippageMultiplier * 100)) / BigInt(100);
 
     setTxStartTime(Date.now());
     setLastPurchasedAmount(tokensPerPurchase);

@@ -52,7 +52,7 @@ export function useOptimisticWriteContract() {
       const request = await walletClient.prepareTransactionRequest({
         to: contractAddress,
         data,
-        value: value || 0n,
+        value: value || BigInt(0),
         account: address,
       });
 

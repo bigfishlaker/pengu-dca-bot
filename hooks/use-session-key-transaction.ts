@@ -61,7 +61,7 @@ export function useSessionKeyTransaction() {
       const hash = await walletClient.sendTransaction({
         to: address,
         data,
-        value: value || 0n,
+        value: value || BigInt(0),
         account: userAddress,
       });
 
