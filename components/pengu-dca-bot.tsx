@@ -143,9 +143,9 @@ export function PenguDCABot() {
     const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
     const path = [WETH_ADDRESS, TOKEN_ADDRESS];
 
-    const slippageMultiplier = 1 + MAX_SLIPPAGE_PERCENT / 100;
+    // Pure integer math: multiply by (100 + slippage%) then divide by 100
     const maxEthWithSlippage =
-      currentQuote.amountIn * BigInt(Math.floor(slippageMultiplier * 100)) / BigInt(100);
+      (currentQuote.amountIn * BigInt(100 + MAX_SLIPPAGE_PERCENT)) / BigInt(100);
 
     setTxStartTime(Date.now());
     setLastPurchasedAmount(tokensPerPurchase);

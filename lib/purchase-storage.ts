@@ -38,8 +38,18 @@ export function getPurchaseHistory(walletAddress: string): WalletPurchaseData {
         lastUpdated: Date.now(),
       };
     }
-    
-    return JSON.parse(stored);
+
+    const parsed = JSON.parse(stored);
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !Array.isArray(parsed.purchases) ||
+      typeof parsed.totalTokens !== "number" ||
+      typeof parsed.totalEthSpent !== "number"
+    ) {
+      throw new Error("Invalid purchase history schema");
+    }
+    return parsed;
   } catch (error) {
     console.error("Failed to load purchase history:", error);
     return {
@@ -64,7 +74,7 @@ export function addPurchase(
     
     const newPurchase: Purchase = {
       ...purchase,
-      id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
     };
     
     data.purchases.push(newPurchase);

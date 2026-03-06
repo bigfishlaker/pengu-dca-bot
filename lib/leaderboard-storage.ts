@@ -19,7 +19,16 @@ export function getLeaderboard(): LeaderboardEntry[] {
   try {
     const stored = localStorage.getItem(LEADERBOARD_KEY);
     if (!stored) return [];
-    return JSON.parse(stored);
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) throw new Error("Invalid leaderboard schema");
+    return parsed.filter(
+      (e: unknown) =>
+        e !== null &&
+        typeof e === "object" &&
+        typeof (e as Record<string, unknown>).address === "string" &&
+        typeof (e as Record<string, unknown>).totalPurchases === "number" &&
+        typeof (e as Record<string, unknown>).totalPengu === "number"
+    ) as LeaderboardEntry[];
   } catch (error) {
     console.error("Failed to load leaderboard:", error);
     return [];

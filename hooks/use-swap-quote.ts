@@ -29,11 +29,15 @@ export function useSwapQuote() {
       throw new Error("Public client not available");
     }
 
+    if (!Number.isFinite(tokenAmount) || tokenAmount <= 0 || tokenAmount > 1_000_000) {
+      throw new Error("Invalid token amount");
+    }
+
     try {
       setIsLoading(true);
 
       // Amount of tokens to buy (with 18 decimals)
-      const amountOut = parseUnits(tokenAmount.toString(), 18);
+      const amountOut = parseUnits(Math.floor(tokenAmount).toString(), 18);
       const path = [WETH_ADDRESS, PENGU_ADDRESS];
 
       // Get required ETH amount from Uniswap
