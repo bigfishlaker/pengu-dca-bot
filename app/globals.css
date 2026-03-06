@@ -64,6 +64,19 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Prevent iOS bounce scroll on body */
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@layer utilities {
+  /* iOS safe area utilities */
+  .pt-safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
