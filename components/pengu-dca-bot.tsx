@@ -13,10 +13,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { UNISWAP_V2_ROUTER_ABI } from "@/config/abstract-contracts";
-import { parseEther, parseUnits, type Hex } from "viem";
+import { type Hex } from "viem";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useSound } from "@/hooks/use-sound";
 import { useSwapQuote, type SwapQuote } from "@/hooks/use-swap-quote";
 import {
   getPurchaseHistory,
@@ -24,20 +23,13 @@ import {
   clearPurchaseHistory,
   type WalletPurchaseData,
 } from "@/lib/purchase-storage";
-import {
-  getTopByPurchases,
-  getTopByPengu,
-  updateLeaderboard,
-  getUserRank,
-} from "@/lib/leaderboard-storage";
 
 // ================================
-// 🐧 TOKEN CONFIGURATION
+// TOKEN CONFIGURATION
 // ================================
 
-const TOKEN_ADDRESS = "0x9ebe3a824ca958e4b3da772d2065518f009cba62" as Hex; // PENGU
+const TOKEN_ADDRESS = "0x9ebe3a824ca958e4b3da772d2065518f009cba62" as Hex;
 const TOKEN_NAME = "PENGU";
-const TOKEN_EMOJI = "🐧";
 
 const WETH_ADDRESS = "0x3439153EB7AF838Ad19d56E1571FBD09333C2809" as Hex;
 const UNISWAP_V2_ROUTER = "0xad1eCa41E6F772bE3cb5A48A6141f9bcc1AF9F7c" as Hex;
@@ -48,27 +40,17 @@ const MAX_TOKENS = 1000;
 const DEFAULT_TOKENS = 100;
 
 // Safety limits
-const MAX_SLIPPAGE_PERCENT = 5; // 5% max slippage
-const MAX_ETH_PER_TRANSACTION = 0.1; // Max 0.1 ETH per transaction
-const QUOTE_EXPIRY_MS = 30000; // Quote expires after 30 seconds
-
-// Estimated ETH per 10 tokens (just for display - real quote is fetched)
-const ETH_PER_10_TOKENS = 0.0001;
+const MAX_SLIPPAGE_PERCENT = 5;
+const MAX_ETH_PER_TRANSACTION = 0.1;
+const QUOTE_EXPIRY_MS = 30000;
 
 export function PenguDCABot() {
   const { address, isConnected } = useAccount();
   const { writeContract, data: hash, isPending } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  // Sound effects
-  const { playSuccess, toggleSound, isEnabled } = useSound();
-
-  // Swap quote hook
   const { getQuote, isLoading: isQuoteLoading } = useSwapQuote();
 
-  // Purchase tracking
   const [purchaseData, setPurchaseData] = useState<WalletPurchaseData>({
     purchases: [],
     totalTokens: 0,
@@ -80,41 +62,24 @@ export function PenguDCABot() {
   const [tokensPerPurchase, setTokensPerPurchase] = useState<number>(DEFAULT_TOKENS);
   const [txStartTime, setTxStartTime] = useState<number>(0);
   const [lastPurchasedAmount, setLastPurchasedAmount] = useState<number>(0);
-  const [isCelebrating, setIsCelebrating] = useState(false);
-  
-  // Confirmation dialog state
+
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [currentQuote, setCurrentQuote] = useState<SwapQuote | null>(null);
   const [quoteTimestamp, setQuoteTimestamp] = useState<number>(0);
-  
-  // Leaderboard state
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [topClickers, setTopClickers] = useState(getTopByPurchases(10));
-  const [topRollers, setTopRollers] = useState(getTopByPengu(10));
-  const [userRank, setUserRank] = useState({ purchasesRank: 0, penguRank: 0 });
 
-  // Load purchase history and leaderboard when wallet connects
   useEffect(() => {
     if (address) {
       const data = getPurchaseHistory(address);
       setPurchaseData(data);
-      
-      // Update leaderboard with current data
-      updateLeaderboard(address, data.purchases.length, data.totalTokens);
-      setTopClickers(getTopByPurchases(10));
-      setTopRollers(getTopByPengu(10));
-      setUserRank(getUserRank(address));
     }
   }, [address]);
 
-  // Handle successful transactions
   useEffect(() => {
     if (isSuccess && txStartTime > 0 && address && lastPurchasedAmount > 0 && currentQuote) {
       const confirmTime = Date.now() - txStartTime;
       const ethSpent = currentQuote.estimatedEth;
       const pricePerToken = currentQuote.pricePerToken;
 
-      // Add to purchase history
       addPurchase(address, {
         timestamp: Date.now(),
         tokenAmount: lastPurchasedAmount,
@@ -123,54 +88,37 @@ export function PenguDCABot() {
         pricePerToken,
       });
 
-      // Reload data
       const updatedData = getPurchaseHistory(address);
       setPurchaseData(updatedData);
 
-      // Update leaderboard
-      updateLeaderboard(address, updatedData.purchases.length, updatedData.totalTokens);
-      setTopClickers(getTopByPurchases(10));
-      setTopRollers(getTopByPengu(10));
-      setUserRank(getUserRank(address));
-
-      // Trigger celebration mode with sound
-      setIsCelebrating(true);
-      playSuccess();
-
-      // Turn off celebrations after audio finishes (700ms)
-      setTimeout(() => setIsCelebrating(false), 700);
-
-      toast.success(`${TOKEN_EMOJI} Bought ${lastPurchasedAmount} ${TOKEN_NAME} in ${confirmTime}ms!`, {
-        description: `Total: ${updatedData.totalTokens.toLocaleString()} PENGU`,
+      toast.success(`Bought ${lastPurchasedAmount} ${TOKEN_NAME} in ${confirmTime}ms`, {
+        description: `Total held: ${updatedData.totalTokens.toLocaleString()} ${TOKEN_NAME}`,
       });
 
       setTxStartTime(0);
       setLastPurchasedAmount(0);
       setCurrentQuote(null);
     }
-  }, [isSuccess, txStartTime, address, hash, lastPurchasedAmount, playSuccess, currentQuote]);
+  }, [isSuccess, txStartTime, address, hash, lastPurchasedAmount, currentQuote]);
 
-  // Step 1: Get quote and show confirmation
   const handleGetQuote = useCallback(async () => {
     if (!isConnected || isPending || isConfirming || !address) return;
 
     try {
       const quote = await getQuote(tokensPerPurchase);
-      
+
       if (!quote) {
         toast.error("Failed to get price quote. Please try again.");
         return;
       }
 
-      // Safety check #6: Liquidity check
       if (!quote.hasLiquidity) {
-        toast.error("Insufficient liquidity for this trade size!");
+        toast.error("Insufficient liquidity for this trade size.");
         return;
       }
 
-      // Safety check #4: Max spend limit
       if (quote.estimatedEth > MAX_ETH_PER_TRANSACTION) {
-        toast.error(`Trade exceeds max limit of ${MAX_ETH_PER_TRANSACTION} ETH!`);
+        toast.error(`Trade exceeds the ${MAX_ETH_PER_TRANSACTION} ETH limit per transaction.`);
         return;
       }
 
@@ -178,243 +126,100 @@ export function PenguDCABot() {
       setQuoteTimestamp(Date.now());
       setShowConfirmDialog(true);
     } catch (error: any) {
-      // Safety check #5: Better error handling
       console.error("Quote error:", error);
       toast.error(error.message || "Failed to get quote");
     }
   }, [isConnected, isPending, isConfirming, address, getQuote, tokensPerPurchase]);
 
-  // Step 2: Execute confirmed transaction
   const handleConfirmPurchase = useCallback(() => {
     if (!currentQuote || !address) return;
 
-    // Check if quote is stale
     if (Date.now() - quoteTimestamp > QUOTE_EXPIRY_MS) {
-      toast.error("Quote expired. Please get a new quote.");
+      toast.error("Quote expired. Please get a fresh quote.");
       setShowConfirmDialog(false);
       return;
     }
 
-    const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
+    const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
     const path = [WETH_ADDRESS, TOKEN_ADDRESS];
 
-    // Safety check #1: Add slippage protection (5%)
-    const slippageMultiplier = 1 + (MAX_SLIPPAGE_PERCENT / 100);
-    const maxEthWithSlippage = currentQuote.amountIn * BigInt(Math.floor(slippageMultiplier * 100)) / BigInt(100);
+    const slippageMultiplier = 1 + MAX_SLIPPAGE_PERCENT / 100;
+    const maxEthWithSlippage =
+      currentQuote.amountIn * BigInt(Math.floor(slippageMultiplier * 100)) / BigInt(100);
 
     setTxStartTime(Date.now());
     setLastPurchasedAmount(tokensPerPurchase);
     setShowConfirmDialog(false);
 
-    // Execute transaction with safety limits
     writeContract({
       abi: UNISWAP_V2_ROUTER_ABI,
       address: UNISWAP_V2_ROUTER,
       functionName: "swapETHForExactTokens",
-      args: [
-        currentQuote.amountOut, // Exact amount of PENGU to receive
-        path,
-        address,
-        BigInt(deadline),
-      ],
-      value: maxEthWithSlippage, // Max ETH with slippage protection
+      args: [currentQuote.amountOut, path, address, BigInt(deadline)],
+      value: maxEthWithSlippage,
     });
   }, [currentQuote, address, tokensPerPurchase, writeContract, quoteTimestamp]);
 
   if (!isConnected) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 p-6 rounded-2xl border-4 border-pink-400 bg-white/90 shadow-2xl mx-4 relative">
-        <div className="absolute -top-4 -left-4 text-3xl">⭐</div>
-        <div className="absolute -top-4 -right-4 text-3xl">✨</div>
-        <div className="absolute -bottom-4 -left-4 text-3xl">💕</div>
-        <div className="absolute -bottom-4 -right-4 text-3xl">🌸</div>
-        
-        <div className="text-7xl">🐧</div>
-        <h2 className="text-xl font-black bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
-          ♡ Connect Wallet ♡
-        </h2>
-        <p className="text-sm text-purple-600 font-bold text-center">
-          ゆっくりしていってね！<br/>Start your PENGU DCA ★
-        </p>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+        <div className="w-full max-w-sm p-8 rounded-2xl border border-slate-800 bg-slate-900 text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mx-auto">
+            <WalletIcon className="w-5 h-5 text-blue-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-white">Connect your wallet</h2>
+            <p className="text-sm text-slate-400 mt-1">
+              Connect to start dollar-cost averaging into {TOKEN_NAME}
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
 
+  const isbusy = isPending || isConfirming || isQuoteLoading;
+
   return (
-    <div className="flex flex-col items-center gap-3 p-4 max-w-5xl mx-auto">
-      {/* Compressed Header */}
-      <div className="text-center space-y-1 relative p-4 rounded-2xl bg-white/90 backdrop-blur-sm border-4 border-pink-400 shadow-2xl transform hover:rotate-1 transition-transform">
-        {/* Decorations - only animate on celebration */}
-        <div className={cn("absolute -top-4 -left-4 text-4xl transition-transform", isCelebrating && "animate-spin")}>🌸</div>
-        <div className={cn("absolute -top-4 -right-4 text-4xl transition-transform", isCelebrating && "animate-spin")}>🌸</div>
-        <div className={cn("absolute -bottom-4 -left-4 text-4xl", isCelebrating && "animate-bounce")}>💕</div>
-        <div className={cn("absolute -bottom-4 -right-4 text-4xl", isCelebrating && "animate-bounce")}>💕</div>
-        <div className={cn("absolute top-1/2 -left-6 text-3xl", isCelebrating && "animate-pulse")}>✨</div>
-        <div className={cn("absolute top-1/2 -right-6 text-3xl", isCelebrating && "animate-pulse")}>✨</div>
-        
-        <h1 className={cn(
-          "text-4xl md:text-5xl font-black bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 bg-clip-text text-transparent drop-shadow-lg",
-          isCelebrating && "animate-pulse"
-        )}>
-          ～★ PENGU DCA BOT 🐧 ★～
-        </h1>
-        <p className="text-base text-purple-600 font-black">
-          ゆっくりしていってね！♡ DCA ♡
+    <div className="flex flex-col gap-4 max-w-2xl mx-auto px-4">
+
+      {/* Page title */}
+      <div className="pt-2">
+        <h1 className="text-2xl font-semibold text-white">DCA into {TOKEN_NAME}</h1>
+        <p className="text-sm text-slate-400 mt-0.5">
+          Dollar-cost average on Abstract via Uniswap V2
         </p>
-        
-        {/* Sound Toggle - cute style */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={toggleSound}
-          className="absolute top-2 right-2 bg-pink-100 hover:bg-pink-200 border-2 border-pink-300 rounded-full transition-all"
-          title={isEnabled ? "Mute sounds" : "Unmute sounds"}
-        >
-          <span className="text-xl">{isEnabled ? "🔊" : "🔇"}</span>
-        </Button>
       </div>
 
-      {/* Stats Dashboard */}
-      <div className="w-full max-w-2xl space-y-2 -mt-2">
-        <div className="grid grid-cols-2 gap-2">
+      {/* Stats row */}
+      {(purchaseData.totalTokens > 0 || purchaseData.purchases.length > 0) && (
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard label="Total PENGU" value={purchaseData.totalTokens.toLocaleString()} />
+          <StatCard label="Purchases" value={purchaseData.purchases.length.toString()} />
           <StatCard
-            label="Total PENGU"
-            value={purchaseData.totalTokens.toLocaleString()}
-            icon="🐧"
-            highlight={purchaseData.totalTokens > 0}
-            isCelebrating={isCelebrating}
+            label="Avg Price"
+            value={
+              purchaseData.averagePrice > 0
+                ? `${(purchaseData.averagePrice * 1_000_000).toFixed(1)}µ`
+                : "—"
+            }
           />
-          <StatCard
-            label="Total Purchases"
-            value={purchaseData.purchases.length.toString()}
-            icon="📈"
-            isCelebrating={isCelebrating}
-          />
-        </div>
-        
-        {/* Leaderboard Button */}
-        <Button
-          onClick={() => setShowLeaderboard(!showLeaderboard)}
-          variant="outline"
-          className="w-full border-3 border-yellow-400 bg-gradient-to-r from-yellow-100 to-orange-100 hover:from-yellow-200 hover:to-orange-200 font-black text-purple-600"
-        >
-          <span className="text-xl mr-2">🏆</span>
-          {showLeaderboard ? "Hide Leaderboard" : "Show Leaderboard"}
-          <span className="text-xl ml-2">🏆</span>
-        </Button>
-      </div>
-
-      {/* Leaderboard Display */}
-      {showLeaderboard && (
-        <div className="w-full max-w-2xl space-y-3 -mt-2">
-          {/* User's Rank */}
-          {address && (userRank.purchasesRank > 0 || userRank.penguRank > 0) && (
-            <div className="p-3 rounded-xl bg-gradient-to-r from-yellow-100 to-orange-100 border-3 border-yellow-400 text-center">
-              <p className="text-sm font-black text-purple-600">
-                ★ Your Ranks: #{userRank.purchasesRank || "?"} Most Clicks | #{userRank.penguRank || "?"} High Roller ★
-              </p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Most Clicks Leaderboard */}
-            <div className="p-4 rounded-2xl border-4 border-pink-400 bg-white/95 shadow-xl">
-              <h3 className="text-lg font-black text-center bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent mb-3">
-                👆 Most Clicks 👆
-              </h3>
-              <div className="space-y-2">
-                {topClickers.slice(0, 5).map((entry, idx) => (
-                  <div
-                    key={entry.address}
-                    className={cn(
-                      "flex items-center justify-between p-2 rounded-lg",
-                      idx === 0 && "bg-yellow-100 border-2 border-yellow-400",
-                      idx === 1 && "bg-gray-100 border-2 border-gray-400",
-                      idx === 2 && "bg-orange-100 border-2 border-orange-400",
-                      idx > 2 && "bg-purple-50 border border-purple-200",
-                      entry.address.toLowerCase() === address?.toLowerCase() && "ring-2 ring-pink-400"
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-black">
-                        {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`}
-                      </span>
-                      <span className="text-xs font-bold text-purple-600 font-mono">
-                        {entry.displayName}
-                      </span>
-                    </div>
-                    <span className="text-sm font-black text-pink-600">
-                      {entry.totalPurchases} clicks
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* High Rollers Leaderboard */}
-            <div className="p-4 rounded-2xl border-4 border-purple-400 bg-white/95 shadow-xl">
-              <h3 className="text-lg font-black text-center bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-3">
-                💎 High Rollers 💎
-              </h3>
-              <div className="space-y-2">
-                {topRollers.slice(0, 5).map((entry, idx) => (
-                  <div
-                    key={entry.address}
-                    className={cn(
-                      "flex items-center justify-between p-2 rounded-lg",
-                      idx === 0 && "bg-yellow-100 border-2 border-yellow-400",
-                      idx === 1 && "bg-gray-100 border-2 border-gray-400",
-                      idx === 2 && "bg-orange-100 border-2 border-orange-400",
-                      idx > 2 && "bg-pink-50 border border-pink-200",
-                      entry.address.toLowerCase() === address?.toLowerCase() && "ring-2 ring-purple-400"
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-black">
-                        {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`}
-                      </span>
-                      <span className="text-xs font-bold text-purple-600 font-mono">
-                        {entry.displayName}
-                      </span>
-                    </div>
-                    <span className="text-sm font-black text-purple-600">
-                      {entry.totalPengu.toLocaleString()} 🐧
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
-      {/* Purchase Controls */}
-      <div className="relative w-full max-w-2xl space-y-3 p-4 rounded-2xl border-4 border-pink-400 bg-white/95 backdrop-blur-md shadow-2xl -mt-2 transform hover:-rotate-1 transition-transform">
-        {/* Decorations - only animate on celebration */}
-        <div className={cn("absolute -top-5 left-1/2 -translate-x-1/2 bg-white px-3 py-1 rounded-full border-4 border-pink-400", isCelebrating && "animate-bounce")}>
-          <span className="text-3xl">🎀</span>
-        </div>
-        <div className={cn("absolute -top-3 left-10 text-2xl", isCelebrating && "animate-spin")}>⭐</div>
-        <div className={cn("absolute -top-3 right-10 text-2xl", isCelebrating && "animate-spin")}>⭐</div>
-        <div className={cn("absolute top-1/2 -left-4 text-3xl", isCelebrating && "animate-pulse")}>💫</div>
-        <div className={cn("absolute top-1/2 -right-4 text-3xl", isCelebrating && "animate-pulse")}>💫</div>
-        
-        <h3 className={cn(
-          "text-xl font-black text-center bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent pt-6",
-          isCelebrating && "animate-pulse"
-        )}>
-          ★✧ Make Purchase ✧★
-        </h3>
-        
-        {/* Token Slider */}
-        <div className="space-y-2 p-3 rounded-xl bg-gradient-to-br from-pink-50 to-purple-50 border-2 border-purple-300">
-          <div className="flex justify-between items-center">
-            <label className="text-sm font-black text-purple-600">Tokens ♡</label>
-            <span className={cn(
-              "text-2xl font-black bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent",
-              isCelebrating && "animate-pulse"
-            )}>
-              {tokensPerPurchase} 🐧
+      {/* Buy panel */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 space-y-5">
+        <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wider">
+          Place Order
+        </h2>
+
+        {/* Amount selector */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm text-slate-400">Amount</label>
+            <span className="text-xl font-semibold text-white">
+              {tokensPerPurchase.toLocaleString()}{" "}
+              <span className="text-slate-400 text-base font-normal">{TOKEN_NAME}</span>
             </span>
           </div>
           <Slider
@@ -424,208 +229,176 @@ export function PenguDCABot() {
             max={MAX_TOKENS}
             step={10}
             className="w-full"
-            disabled={isPending || isConfirming}
+            disabled={isbusy}
           />
-          <div className="flex justify-between text-xs font-bold text-purple-500">
-            <span>✧{MIN_TOKENS}</span>
-            <span className="text-center text-pink-500">
-              ~{((tokensPerPurchase / 10) * ETH_PER_10_TOKENS).toFixed(4)} ETH
-            </span>
-            <span>{MAX_TOKENS}✧</span>
+          <div className="flex justify-between text-xs text-slate-500">
+            <span>{MIN_TOKENS}</span>
+            <span>{MAX_TOKENS}</span>
           </div>
         </div>
 
-        {/* Buy Button */}
+        {/* Limits info */}
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+          <InfoIcon className="w-4 h-4 text-slate-500 shrink-0" />
+          <p className="text-xs text-slate-400">
+            Max {MAX_ETH_PER_TRANSACTION} ETH per transaction &middot; {MAX_SLIPPAGE_PERCENT}% max slippage &middot; Live Uniswap V2 quote
+          </p>
+        </div>
+
+        {/* Buy button */}
         <Button
           onClick={handleGetQuote}
-          disabled={isPending || isConfirming || isQuoteLoading}
+          disabled={isbusy}
           className={cn(
-            "relative w-full text-xl font-black py-6 rounded-xl overflow-hidden border-4 border-pink-500",
-            "bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400",
-            "hover:from-pink-500 hover:via-purple-500 hover:to-blue-500",
-            "shadow-2xl hover:shadow-pink-500/50",
-            "transition-all duration-200 hover:scale-110 hover:rotate-2",
-            "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:rotate-0",
-            "text-white drop-shadow-2xl",
-            isCelebrating && "animate-pulse"
+            "w-full h-12 text-base font-semibold rounded-xl",
+            "bg-blue-600 hover:bg-blue-500 text-white",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+            "transition-colors"
           )}
         >
-          {/* Sparkles - only on celebration */}
-          <div className={cn("absolute top-1 left-2 text-2xl", isCelebrating && "animate-spin")}>✨</div>
-          <div className={cn("absolute top-1 right-2 text-2xl", isCelebrating && "animate-spin")}>✨</div>
-          <div className={cn("absolute bottom-1 left-1/4 text-xl", isCelebrating && "animate-bounce")}>⭐</div>
-          <div className={cn("absolute bottom-1 right-1/4 text-xl", isCelebrating && "animate-bounce")}>⭐</div>
-          
-          <span className="relative z-10">
-            {isQuoteLoading ? (
-              <span className="animate-pulse">♡ Getting Price... 💫</span>
-            ) : isPending ? (
-              <span>♡♡ Signing... ✍️ ♡♡</span>
-            ) : isConfirming ? (
-              <span className="animate-bounce">★ Buying PENGU... 🚀 ★</span>
-            ) : (
-              `★✧♡ Buy ${tokensPerPurchase} PENGU 🐧 ♡✧★`
-            )}
-          </span>
+          {isQuoteLoading
+            ? "Fetching quote..."
+            : isPending
+            ? "Confirm in wallet..."
+            : isConfirming
+            ? "Confirming transaction..."
+            : `Buy ${tokensPerPurchase.toLocaleString()} ${TOKEN_NAME}`}
         </Button>
-
-        {/* Clear History */}
-        {purchaseData.purchases.length > 0 && (
-          <Button
-            onClick={() => {
-              if (address && confirm("Clear all purchase history? This cannot be undone.")) {
-                clearPurchaseHistory(address);
-                setPurchaseData({
-                  purchases: [],
-                  totalTokens: 0,
-                  totalEthSpent: 0,
-                  averagePrice: 0,
-                  lastUpdated: Date.now(),
-                });
-                toast.success("History cleared ♡");
-              }
-            }}
-            variant="outline"
-            size="sm"
-            className="w-full border-2 border-purple-400 hover:bg-purple-100 text-purple-700 font-black text-xs"
-            disabled={isPending || isConfirming}
-          >
-            ✕ Clear ✕
-          </Button>
-        )}
       </div>
 
-      {/* Purchase History */}
+      {/* Purchase history */}
       {purchaseData.purchases.length > 0 && (
-        <div className="w-full space-y-2 -mt-2">
-          <h3 className={cn(
-            "text-xl font-black text-center bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent relative",
-            isCelebrating && "animate-pulse"
-          )}>
-            <span className={cn("absolute -left-8", isCelebrating && "animate-spin")}>💫</span>
-            ♡★ Purchase History ★♡
-            <span className={cn("absolute -right-8", isCelebrating && "animate-spin")}>💫</span>
-          </h3>
-          <div className="rounded-xl border-4 border-purple-400 bg-white/95 backdrop-blur-sm overflow-hidden shadow-2xl transform hover:scale-102 transition-transform">
-            <div className="max-h-80 overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-gradient-to-r from-pink-200 to-purple-200 sticky top-0 border-b-2 border-pink-400">
-                  <tr>
-                    <th className="p-2 text-left font-black text-purple-700">Date ♡</th>
-                    <th className="p-2 text-right font-black text-purple-700">Amount 🐧</th>
-                    <th className="p-2 text-right font-black text-purple-700">ETH 💎</th>
-                    <th className="p-2 text-right font-black text-purple-700">Price ✧</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {purchaseData.purchases.slice().reverse().map((purchase, idx) => (
-                    <tr key={purchase.id} className={cn(
-                      "border-t border-purple-200 hover:bg-pink-100 transition-colors",
-                      idx % 2 === 0 ? "bg-white" : "bg-purple-50/50"
-                    )}>
-                      <td className="p-2 text-xs font-semibold text-purple-600">
-                        {new Date(purchase.timestamp).toLocaleDateString()} {new Date(purchase.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+          <div className="px-5 py-4 flex items-center justify-between border-b border-slate-800">
+            <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wider">
+              Purchase History
+            </h2>
+            <button
+              onClick={() => {
+                if (address && confirm("Clear all purchase history? This cannot be undone.")) {
+                  clearPurchaseHistory(address);
+                  setPurchaseData({
+                    purchases: [],
+                    totalTokens: 0,
+                    totalEthSpent: 0,
+                    averagePrice: 0,
+                    lastUpdated: Date.now(),
+                  });
+                  toast.success("History cleared");
+                }
+              }}
+              disabled={isbusy}
+              className="text-xs text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-900 border-b border-slate-800">
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    Amount
+                  </th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    ETH
+                  </th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    Price
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {purchaseData.purchases
+                  .slice()
+                  .reverse()
+                  .map((purchase) => (
+                    <tr
+                      key={purchase.id}
+                      className="hover:bg-slate-800/40 transition-colors"
+                    >
+                      <td className="px-5 py-3 text-slate-400 text-xs whitespace-nowrap">
+                        {new Date(purchase.timestamp).toLocaleDateString()}{" "}
+                        {new Date(purchase.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </td>
-                      <td className="p-2 text-right font-black text-pink-600">
+                      <td className="px-5 py-3 text-right text-white font-medium">
                         {purchase.tokenAmount.toLocaleString()}
                       </td>
-                      <td className="p-2 text-right font-bold text-purple-600">
+                      <td className="px-5 py-3 text-right text-slate-300">
                         {purchase.ethSpent.toFixed(4)}
                       </td>
-                      <td className="p-2 text-right font-semibold text-purple-500">
-                        {(purchase.pricePerToken * 1000000).toFixed(1)}µ
+                      <td className="px-5 py-3 text-right text-slate-400 text-xs">
+                        {(purchase.pricePerToken * 1_000_000).toFixed(1)}µ
                       </td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
+              </tbody>
+            </table>
           </div>
-          <p className={cn(
-            "text-center text-xs font-black text-purple-600",
-            isCelebrating && "animate-pulse"
-          )}>
-            ★✧♡ Total: {purchaseData.purchases.length} ♡✧★
-          </p>
         </div>
       )}
 
-      {/* Donation Footer - Milady style */}
-      <div className="w-full max-w-2xl mt-4 p-4 rounded-2xl border-3 border-pink-300 bg-white/80 backdrop-blur-sm shadow-lg text-center relative">
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-3xl">💝</div>
-        <p className="text-sm font-bold text-purple-600 mb-2">
-          ♡ Enjoying the bot? Support the dev! ♡
-        </p>
-        <a
-          href="https://portal.abs.xyz/profile/0xe77c0bA7f9Ef40A018B48Ce37731195726254Df7"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-6 py-2 rounded-full border-3 border-pink-400 bg-gradient-to-r from-pink-100 to-purple-100 hover:from-pink-200 hover:to-purple-200 transition-all hover:scale-105 shadow-md"
-        >
-          <span className="text-2xl">💕</span>
-          <span className="font-black bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-            Donate via AGW
-          </span>
-          <span className="text-lg">✨</span>
-        </a>
-        <p className="text-xs text-purple-500 mt-2 font-semibold">
-          ★ Thank you for your support! ★
-        </p>
-      </div>
-
-      {/* Confirmation Dialog - Safety Check #3 */}
+      {/* Confirmation Dialog */}
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent className="border-4 border-pink-400 bg-white/95 rounded-2xl">
+        <DialogContent className="border border-slate-700 bg-slate-900 rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-black bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent text-center">
-              ♡ Confirm Purchase ♡
+            <DialogTitle className="text-white text-lg font-semibold">
+              Confirm Purchase
             </DialogTitle>
-            <DialogDescription className="text-center text-purple-600 font-semibold">
-              Please review your purchase details
+            <DialogDescription className="text-slate-400">
+              Review your order before confirming
             </DialogDescription>
           </DialogHeader>
 
           {currentQuote && (
-            <div className="space-y-4 py-4">
-              {/* Purchase Details */}
-              <div className="p-4 rounded-xl bg-gradient-to-br from-pink-50 to-purple-50 border-2 border-purple-300 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-purple-600">You&apos;re Buying:</span>
-                  <span className="text-xl font-black text-pink-600">
-                    {tokensPerPurchase} PENGU 🐧
+            <div className="space-y-3 py-2">
+              <div className="rounded-xl border border-slate-700 bg-slate-800 divide-y divide-slate-700">
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-sm text-slate-400">Buying</span>
+                  <span className="text-base font-semibold text-white">
+                    {tokensPerPurchase.toLocaleString()} {TOKEN_NAME}
                   </span>
                 </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-purple-600">Estimated Cost:</span>
-                  <span className="text-lg font-bold text-purple-600">
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-sm text-slate-400">Estimated cost</span>
+                  <span className="text-sm font-medium text-white">
                     {currentQuote.estimatedEth.toFixed(6)} ETH
                   </span>
                 </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-purple-600">Price per Token:</span>
-                  <span className="text-sm font-semibold text-purple-500">
-                    {(currentQuote.pricePerToken * 1000000).toFixed(2)} µETH
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-sm text-slate-400">Price per token</span>
+                  <span className="text-sm text-slate-300">
+                    {(currentQuote.pricePerToken * 1_000_000).toFixed(2)} µETH
                   </span>
                 </div>
-
-                <div className="flex justify-between items-center pt-2 border-t-2 border-purple-200">
-                  <span className="text-sm font-bold text-purple-600">Max w/ Slippage ({MAX_SLIPPAGE_PERCENT}%):</span>
-                  <span className="text-lg font-black text-pink-600">
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-sm text-slate-400">
+                    Max with {MAX_SLIPPAGE_PERCENT}% slippage
+                  </span>
+                  <span className="text-sm font-semibold text-white">
                     {(currentQuote.estimatedEth * (1 + MAX_SLIPPAGE_PERCENT / 100)).toFixed(6)} ETH
                   </span>
                 </div>
               </div>
 
-              {/* Warning if expensive */}
               {currentQuote.estimatedEth > 0.01 && (
-                <div className="p-3 rounded-lg bg-yellow-100 border-2 border-yellow-400">
-                  <p className="text-sm font-bold text-yellow-700 text-center">
-                    ⚠️ This purchase will cost more than 0.01 ETH!
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <span className="text-amber-400 mt-0.5">⚠</span>
+                  <p className="text-sm text-amber-300">
+                    This purchase exceeds 0.01 ETH. Please review carefully.
                   </p>
                 </div>
               )}
+
+              <p className="text-xs text-slate-500 text-center">
+                Quote valid for 30 seconds
+              </p>
             </div>
           )}
 
@@ -633,15 +406,15 @@ export function PenguDCABot() {
             <Button
               variant="outline"
               onClick={() => setShowConfirmDialog(false)}
-              className="flex-1 border-2 border-purple-300 hover:bg-purple-50 font-bold"
+              className="flex-1 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white"
             >
-              ✕ Cancel
+              Cancel
             </Button>
             <Button
               onClick={handleConfirmPurchase}
-              className="flex-1 bg-gradient-to-r from-pink-400 to-purple-400 hover:from-pink-500 hover:to-purple-500 text-white font-black border-2 border-pink-500"
+              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold"
             >
-              ✓ Confirm Purchase
+              Confirm Purchase
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -650,50 +423,41 @@ export function PenguDCABot() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  icon,
-  highlight = false,
-  isCelebrating = false,
-}: {
-  label: string;
-  value: string;
-  icon: string;
-  highlight?: boolean;
-  isCelebrating?: boolean;
-}) {
+function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      className={cn(
-        "relative group p-3 rounded-xl border-4 bg-white/95 backdrop-blur-sm shadow-xl transition-all duration-200",
-        "hover:shadow-2xl hover:scale-110 hover:-translate-y-1 hover:rotate-2",
-        highlight 
-          ? "border-pink-500 bg-gradient-to-br from-pink-100 to-purple-100" 
-          : "border-purple-400 hover:border-pink-400",
-        isCelebrating && highlight && "animate-pulse"
-      )}
-    >
-      {/* MAXIMUM decorations - only on celebration */}
-      <div className={cn(
-        "absolute -top-3 -right-3 text-3xl opacity-0 transition-opacity",
-        isCelebrating ? "opacity-100 animate-spin" : "group-hover:opacity-100"
-      )}>✨</div>
-      <div className={cn(
-        "absolute -top-3 -left-3 text-2xl opacity-0 transition-opacity",
-        isCelebrating ? "opacity-100 animate-bounce" : "group-hover:opacity-100"
-      )}>⭐</div>
-      
-      <div className={cn(
-        "text-4xl mb-1 transition-transform duration-200 drop-shadow-lg",
-        isCelebrating ? "animate-bounce" : "group-hover:scale-125"
-      )}>{icon}</div>
-      <div className="text-2xl font-black bg-gradient-to-br from-pink-500 to-purple-500 bg-clip-text text-transparent">{value}</div>
-      <div className="text-xs text-purple-700 font-black mt-1">{label}</div>
-      
-      {/* Milady card bottom border - THICKER */}
-      <div className="absolute bottom-0 left-0 right-0 h-3 bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 rounded-b-lg" />
+    <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
+      <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-lg font-semibold text-white truncate">{value}</p>
     </div>
   );
 }
 
+function WalletIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 640 640"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      fill="currentColor"
+    >
+      <path d="M128 96C92.7 96 64 124.7 64 160L64 448C64 483.3 92.7 512 128 512L512 512C547.3 512 576 483.3 576 448L576 256C576 220.7 547.3 192 512 192L136 192C122.7 192 112 181.3 112 168C112 154.7 122.7 144 136 144L520 144C533.3 144 544 133.3 544 120C544 106.7 533.3 96 520 96L128 96zM480 320C497.7 320 512 334.3 512 352C512 369.7 497.7 384 480 384C462.3 384 448 369.7 448 352C448 334.3 462.3 320 480 320z" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4M12 8h.01" />
+    </svg>
+  );
+}
